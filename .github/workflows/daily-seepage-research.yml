@@ -1,9 +1,6 @@
 name: Daily seepage research push
 
 on:
-  schedule:
-    # 09:00 Asia/Shanghai = 01:00 UTC
-    - cron: "0 1 * * *"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +14,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Post daily research note
+      - name: Post daily research note to GitHub issue manually only
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
