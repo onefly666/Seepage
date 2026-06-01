@@ -1,23 +1,28 @@
-name: Daily seepage research push
+name: Daily seepage research email
 
 on:
+  schedule:
+    # 09:00 Asia/Shanghai = 01:00 UTC
+    - cron: "0 1 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  push-research-note:
+  send-research-email:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Post daily research note to GitHub issue manually only
+      - name: Send daily research note by email
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          ISSUE_NUMBER: "1"
           TZ: Asia/Shanghai
-        run: python scripts/daily_research_push.py
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: python scripts/daily_research_email.py
