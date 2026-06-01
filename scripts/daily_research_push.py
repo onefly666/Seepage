@@ -9,20 +9,33 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+MENTION = "@onefly666"
+
 TOPIC_QUERIES = [
-    "tidal sluice seepage fluctuating water level",
-    "transient seepage hydraulic structure foundation uplift pressure",
-    "periodic water head boundary pore pressure response soil",
-    "fluctuating reservoir water level groundwater response foundation",
-    "sluice foundation seepage uplift pressure",
-    "unsteady seepage water level fluctuation hydraulic structure",
-    "pore water pressure response cyclic water level seepage",
+    "tidal sluice seepage uplift pressure fluctuating water level",
+    "sluice foundation seepage uplift pressure transient water head",
+    "periodic water head boundary pore pressure response seepage",
+    "fluctuating water level seepage pressure head response foundation",
+    "hydraulic structure foundation transient seepage uplift pressure",
+    "cyclic water level pore water pressure response seepage",
+    "unsteady seepage hydraulic head response foundation water level fluctuation",
 ]
 
-KEY_TERMS = [
-    "sluice", "tidal", "seepage", "uplift", "foundation", "pore pressure",
-    "water level", "fluctuation", "transient", "unsteady", "hydraulic structure",
-    "head", "periodic", "reservoir", "groundwater",
+REQUIRED_GROUPS = [
+    ("seepage", "groundwater", "pore pressure", "pore water pressure", "pressure head", "hydraulic head", "uplift pressure"),
+    ("water level", "fluctuat", "cyclic", "periodic", "transient", "unsteady", "tidal", "reservoir"),
+]
+
+POSITIVE_TERMS = [
+    "sluice", "tidal", "seepage", "uplift pressure", "foundation", "pore pressure",
+    "pore water pressure", "pressure head", "hydraulic head", "water level",
+    "fluctuation", "transient", "unsteady", "hydraulic structure", "periodic",
+    "cyclic", "groundwater", "seepage field",
+]
+
+NEGATIVE_TERMS = [
+    "landslide", "slope stability", "deformation mechanism", "rainfall-induced",
+    "debris flow", "mine", "oil", "gas reservoir", "carbon dioxide", "contaminant",
 ]
 
 FALLBACK_NOTES = [
@@ -35,6 +48,11 @@ FALLBACK_NOTES = [
         "title": "闸底板扬压力不是静水分布的简单缩放",
         "body": "在非稳定渗流中，底板下扬压力取决于边界水头变化、渗流路径、土层分布、排水条件和储水系数。潮位快速波动时，内部水头场可能处于过渡状态，某些位置会出现明显滞后，因此只按瞬时上下游水位差线性插值可能低估或高估局部扬压力。",
         "keywords": "uplift pressure; transient seepage; sluice floor; hydraulic gradient",
+    },
+    {
+        "title": "用传递函数理解底板水头响应",
+        "body": "如果把外侧水位过程看成输入，把底板下测点水头看成输出，就可以用幅值比和相位差描述闸基的渗流传递特性。这个视角适合处理潮位、浪压力或泵闸运行造成的周期性边界扰动。",
+        "keywords": "head response; transfer function; pore pressure; cyclic boundary",
     },
 ]
 
@@ -66,12 +84,25 @@ def reconstruct_abstract(index):
 
 
 def clean_text(value):
-    value = re.sub(r"\s+", " ", value or "").strip()
-    return value
+    return re.sub(r"\s+", " ", value or "").strip()
 
 
-def sentence_excerpt(text, max_len=260):
-    text = clean_text(text)
+def work_text(work):
+    return " ".join([
+        work.get("title") or "",
+        reconstruct_abstract(work.get("abstract_inverted_index")),
+    ]).lower()
+
+
+def is_relevant(work):
+    text = work_text(work)
+    if any(term in text for term in NEGATIVE_TERMS):
+        return False
+    return all(any(term in text for term in group) for group in REQUIRED_GROUPS)
+
+
+def sentence_excerpt(text, max_len=280):
+    text = clean_text(text).replace("Abstract. ", "")
     if not text:
         return ""
     parts = re.split(r"(?<=[.!?。！？])\s+", text)
@@ -108,12 +139,10 @@ def link_of(work):
 
 
 def score_work(work):
-    haystack = " ".join([
-        work.get("title") or "",
-        reconstruct_abstract(work.get("abstract_inverted_index")),
-    ]).lower()
-    score = sum(2 for term in KEY_TERMS if term in haystack)
-    score += min(int(work.get("cited_by_count") or 0), 200) / 100.0
+    text = work_text(work)
+    score = sum(2.5 for term in POSITIVE_TERMS if term in text)
+    score -= sum(4 for term in NEGATIVE_TERMS if term in text)
+    score += min(int(work.get("cited_by_count") or 0), 150) / 100.0
     year = work.get("publication_year") or 0
     if year >= 2015:
         score += 1
@@ -127,13 +156,13 @@ def fetch_candidates(today):
     params = urllib.parse.urlencode({
         "search": query,
         "filter": "type:article,from_publication_date:2000-01-01",
-        "sort": "cited_by_count:desc",
-        "per-page": "25",
+        "sort": "relevance_score:desc",
+        "per-page": "50",
     })
     url = f"https://api.openalex.org/works?{params}"
     data = request_json(url)
-    works = data.get("results", [])
-    works = [w for w in works if w.get("title")]
+    works = [w for w in data.get("results", []) if w.get("title")]
+    works = [w for w in works if is_relevant(w)]
     works.sort(key=score_work, reverse=True)
     return query, works
 
@@ -162,12 +191,15 @@ def build_paper_note(work, query, today):
     link = link_of(work)
     cited = work.get("cited_by_count") or 0
 
-    if excerpt:
-        core_problem = f"论文摘要显示，其核心关注点可概括为：{excerpt}"
-    else:
-        core_problem = "从题名和来源看，这篇论文适合用于补充非稳定渗流、水位波动或地基压力水头响应方面的文献线索；建议进一步阅读全文核对模型边界和试验条件。"
+    core_problem = (
+        f"论文摘要显示，其核心关注点可概括为：{excerpt}"
+        if excerpt else
+        "从题名和来源看，这篇论文适合用于补充非稳定渗流、水位波动或地基压力水头响应方面的文献线索；建议进一步阅读全文核对模型边界和试验条件。"
+    )
 
     return textwrap.dedent(f"""
+    {MENTION}
+
     ### {today:%Y-%m-%d} 每日推送：论文
 
     **{title}**
@@ -181,7 +213,7 @@ def build_paper_note(work, query, today):
     {core_problem}
 
     **和你的研究的连接**  
-    这类研究可以放进“外侧水位/脉动压力边界 -> 闸基渗流场 -> 底板下压力水头响应”的分析框架中。阅读时建议重点看三件事：边界水头是否随时间变化，土体渗透系数和储水参数如何取值，内部测点水头是否出现幅值衰减或相位滞后。
+    这篇内容被筛选出来，是因为它同时涉及“渗流/压力水头/孔压”和“水位波动/周期或非稳定边界”。阅读时建议重点看：边界水头如何随时间变化，土体渗透系数和储水参数如何取值，内部测点水头是否出现幅值衰减或相位滞后。
 
     **今天可追问的建模点**  
     如果把潮位近似为周期水头边界，可以比较不同测点的响应幅值比和相位差；这些量比单个时刻的扬压力更能反映地基对脉动水压力的传递特性。
@@ -194,6 +226,8 @@ def build_paper_note(work, query, today):
 def build_fallback_note(today):
     note = FALLBACK_NOTES[today.toordinal() % len(FALLBACK_NOTES)]
     return textwrap.dedent(f"""
+    {MENTION}
+
     ### {today:%Y-%m-%d} 每日推送：知识点
 
     **{note['title']}**
