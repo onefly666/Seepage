@@ -2,8 +2,8 @@ name: Daily seepage research email
 
 on:
   schedule:
-    # 09:00 Asia/Shanghai = 01:00 UTC
-    - cron: "0 1 * * *"
+    # 09:17 Asia/Shanghai = 01:17 UTC. Avoid GitHub Actions top-of-hour congestion.
+    - cron: "17 1 * * *"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD || secrets.QQ_SMTP_AUTH_CODE }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
         run: python scripts/daily_research_email.py
