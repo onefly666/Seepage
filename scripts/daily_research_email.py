@@ -219,10 +219,12 @@ def required_env(name):
 
 
 def send_email(subject, body):
-    smtp_host = required_env("SMTP_HOST")
-    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.qq.com").strip() or "smtp.qq.com"
+    smtp_port = int(os.environ.get("SMTP_PORT", "465").strip() or "465")
     smtp_user = required_env("SMTP_USER")
-    smtp_password = required_env("SMTP_PASSWORD")
+    smtp_password = (os.environ.get("SMTP_PASSWORD") or os.environ.get("QQ_SMTP_AUTH_CODE") or "").strip()
+    if not smtp_password:
+        raise RuntimeError("Missing required environment variable: SMTP_PASSWORD or QQ_SMTP_AUTH_CODE")
     mail_to = required_env("MAIL_TO")
     mail_from = os.environ.get("MAIL_FROM", smtp_user).strip() or smtp_user
 
